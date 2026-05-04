@@ -179,8 +179,11 @@ fun main() {
 ### Write and read annotations in metadata
 <primary-label ref="experimental-general"/>
 
-By default, Kotlin stores annotations in Kotlin metadata so that you can access them using the `kotlin-metadata-jvm` library.
-This removes the need to match annotations by signature, making access more reliable for overloaded declarations.
+Kotlin stores annotations in both bytecode and Kotlin metadata. If you use the `kotlin-metadata-jvm` library to read or
+write annotations, you work with the metadata representation.
+
+When you change the annotations in metadata, make sure they stay consistent with the annotations stored in bytecode.
+If they get out of sync, tools that rely on reflection or bytecode analysis may see different results than tools that read Kotlin metadata.
 
 The `kotlin-metadata-jvm` library provides the following APIs for accessing annotations:
 
