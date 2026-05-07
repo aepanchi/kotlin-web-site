@@ -177,10 +177,14 @@ fun main() {
 ```
 
 ### Write and read annotations in metadata
-<primary-label ref="experimental-general"/>
 
 Kotlin stores annotations in both bytecode and Kotlin metadata. If you use the `kotlin-metadata-jvm` library to read or
 write annotations, you work with the metadata representation.
+
+> Kotlin stores annotations in Kotlin metadata starting with Kotlin 2.4.0. If you inspect class files compiled with earlier versions,
+> the annotations aren't present.
+>
+{style="note"}
 
 When you change the annotations in metadata, make sure they stay consistent with the annotations stored in bytecode.
 If they get out of sync, tools that rely on reflection or bytecode analysis may see different results than tools that read Kotlin metadata.
@@ -199,14 +203,9 @@ The `kotlin-metadata-jvm` library provides the following APIs for accessing anno
 * `KmProperty.delegateFieldAnnotations`
 * `KmEnumEntry.annotations`
 
-These APIs are [Experimental](components-stability.md#stability-levels-explained).
-To opt in, use the `@OptIn(ExperimentalAnnotationsInMetadata::class)` annotation.
-
 Here's an example of reading annotations from Kotlin metadata:
 
 ```kotlin
-@file:OptIn(ExperimentalAnnotationsInMetadata::class)
-
 import kotlin.metadata.ExperimentalAnnotationsInMetadata
 import kotlin.metadata.jvm.KotlinClassMetadata
 
