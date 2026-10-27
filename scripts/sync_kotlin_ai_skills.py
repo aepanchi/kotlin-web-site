@@ -75,7 +75,7 @@ def render_panel(name: str, info: dict) -> str:
     )
 
 
-def sync(doc: str, skills: dict[str, dict], ignored: set[str]):
+def sync(doc: str, skills: dict[str, dict]):
     block = PANELS_BLOCK_RE.search(doc)
     if not block:
         sys.exit('ERROR: <panels id="kotlin-ai-skills"> block not found in the document.')
@@ -96,7 +96,7 @@ def sync(doc: str, skills: dict[str, dict], ignored: set[str]):
 
     inner = PANEL_RE.sub(drop_if_missing, inner)
 
-    added = sorted(n for n in skills if n not in documented and n not in ignored)
+    added = sorted(n for n in skills if n not in documented)
     if added:
         if not inner.endswith("\n"):
             inner += "\n"
@@ -135,24 +135,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skills-dir", required=True, type=Path)
     ap.add_argument("--doc", required=True, type=Path)
-    ap.add_argument("--ignore-file", type=Path,
-                    help="Optional file with skill folder names (one per line) that must not get a panel.")
     ap.add_argument("--pr-body", type=Path, help="Where to write the PR description.")
     args = ap.parse_args()
-
-    ignored = set()
-    if args.ignore_file and args.ignore_file.is_file():
-        ignored = {
-            l.strip() for l in args.ignore_file.read_text().splitlines()
-            if l.strip() and not l.lstrip().startswith("#")
-        }
 
     skills = read_skills(args.skills_dir)
     if not skills:
         sys.exit(f"ERROR: no skills found in {args.skills_dir}; refusing to remove every panel.")
 
     doc = args.doc.read_text(encoding="utf-8")
-    new_doc, added, removed = sync(doc, skills, ignored)
+    new_doc, added, removed = sync(doc, skills)
     changed = new_doc != doc
     if changed:
         args.doc.write_text(new_doc, encoding="utf-8")
