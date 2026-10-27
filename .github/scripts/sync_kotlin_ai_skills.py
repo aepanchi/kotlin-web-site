@@ -1,87 +1,174 @@
-name: Sync Kotlin AI skills page
+#!/usr/bin/env python3
+"""
+Sync the <panels id="kotlin-ai-skills"> block in kotlin-ai-skills.md with the
+skill folders in Kotlin/kotlin-agent-skills.
 
-on:
-  # Fired instantly by Kotlin/kotlin-agent-skills when something under skills/ changes on main
-  repository_dispatch:
-    types: [kotlin-agent-skills-updated]
-  # Safety net in case a dispatch is missed
-  schedule:
-    - cron: "0 6 * * 1-5"
-  workflow_dispatch:
+- A skill folder (skills/<name>/SKILL.md) with no matching panel  -> a panel is added.
+- A panel whose "AI skill" link points to a folder that no longer exists -> the panel is removed.
 
-permissions:
-  contents: write
-  pull-requests: write
+Panels are matched to skills by their link:
+  https://github.com/Kotlin/kotlin-agent-skills/tree/<branch>/skills/<name>
 
-concurrency:
-  group: sync-kotlin-ai-skills
-  cancel-in-progress: false
+The script is idempotent: running it when everything is in sync changes nothing.
+"""
+import argparse
+import html
+import os
+import re
+import sys
+from pathlib import Path
 
-jobs:
-  sync:
-    if: github.repository == 'aepanchi/kotlin-web-site'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out kotlin-web-site
-        uses: actions/checkout@v4
+import yaml
 
-      - name: Check out kotlin-agent-skills
-        uses: actions/checkout@v4
-        with:
-          repository: aepanchi/kotlin-agent-skills
-          ref: main
-          path: .kotlin-agent-skills
+SKILL_URL = "https://github.com/Kotlin/kotlin-agent-skills/tree/main/skills/"
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+PANELS_BLOCK_RE = re.compile(
+    r'(<panels\b[^>]*\bid="kotlin-ai-skills"[^>]*>)(.*?)(^[ \t]*</panels>)',
+    re.S | re.M,
+)
+PANEL_RE = re.compile(r"^[ \t]*<panel>.*?</panel>[ \t]*\n", re.S | re.M)
+SKILL_LINK_RE = re.compile(
+    r'href="https://github\.com/Kotlin/kotlin-agent-skills/tree/[^/"]+/skills/([^/"#?]+)/?"'
+)
+FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n(.*)\Z", re.S)
+H1_RE = re.compile(r"^#\s+(.+?)\s*$", re.M)
 
-      - run: pip install pyyaml
 
-      - name: Update kotlin-ai-skills.md
-        id: sync
-        run: |
-          python .github/scripts/sync_kotlin_ai_skills.py \
-            --skills-dir .kotlin-agent-skills/skills \
-            --doc docs/topics/ai/kotlin-ai-skills.md \
-            --pr-body "$RUNNER_TEMP/pr-body.md"
+def read_skills(skills_dir: Path) -> dict[str, dict]:
+    """Return {folder_name: {"title": ..., "description": ...}} for every skill folder."""
+    skills = {}
+    for d in sorted(p for p in skills_dir.iterdir() if p.is_dir()):
+        skill_md = d / "SKILL.md"
+        if not skill_md.is_file():
+            continue
+        text = skill_md.read_text(encoding="utf-8")
+        meta, body = {}, text
+        m = FRONTMATTER_RE.match(text)
+        if m:
+            meta = yaml.safe_load(m.group(1)) or {}
+            body = m.group(2)
+        h1 = H1_RE.search(body)
+        title = h1.group(1) if h1 else d.name.replace("-", " ").capitalize()
+        skills[d.name] = {
+            "title": title,
+            "description": first_sentence(str(meta.get("description", ""))),
+        }
+    return skills
 
-      # Opens a PR, or updates the bot's PR if one is already open.
-      # If the page is already in sync, closes the bot's open PR (if any) and deletes its branch.
-      - name: Open or update pull request
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CHANGED: ${{ steps.sync.outputs.changed }}
-          BRANCH: bot/sync-kotlin-ai-skills
-          BASE: master
-          DOC: docs/topics/ai/kotlin-ai-skills.md
-          TITLE: "Kotlin AI skills: sync panels with kotlin-agent-skills"
-        run: |
-          set -euo pipefail
 
-          EXISTING=$(gh pr list --head "$BRANCH" --base "$BASE" --state open \
-                       --json number --jq '.[0].number // empty')
+def first_sentence(text: str) -> str:
+    text = " ".join(text.split())
+    parts = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)
+    return parts[0] if parts else ""
 
-          if [ "$CHANGED" != "true" ]; then
-            if [ -n "$EXISTING" ]; then
-              gh pr close "$EXISTING" --delete-branch \
-                --comment "The page is already in sync with kotlin-agent-skills, closing."
-            fi
-            echo "Nothing to do."
-            exit 0
-          fi
 
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -C "$BRANCH"
-          git add "$DOC"
-          git commit -m "$TITLE"
-          git push --force origin "$BRANCH"
+def render_panel(name: str, info: dict) -> str:
+    title = html.escape(info["title"], quote=False)
+    desc = html.escape(info["description"] or "TODO: add a description.", quote=False)
+    return (
+        "    <panel>\n"
+        f"        <title>{title}</title>\n"
+        f"        <p>{desc}</p>\n"
+        f'        <a href="{SKILL_URL}{name}" as="button" icon="arrow-right" '
+        f'icon-position="right" id="{name}">AI skill</a>\n'
+        "    </panel>\n"
+    )
 
-          if [ -n "$EXISTING" ]; then
-            gh pr edit "$EXISTING" --body-file "$RUNNER_TEMP/pr-body.md"
-          else
-            gh pr create --base "$BASE" --head "$BRANCH" \
-              --title "$TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
-            # To request a review automatically, add:  --reviewer your-github-handle
-          fi
+
+def sync(doc: str, skills: dict[str, dict], ignored: set[str]):
+    block = PANELS_BLOCK_RE.search(doc)
+    if not block:
+        sys.exit('ERROR: <panels id="kotlin-ai-skills"> block not found in the document.')
+    opening, inner, closing = block.group(1), block.group(2), block.group(3)
+
+    documented, removed = set(), []
+
+    def drop_if_missing(m: re.Match) -> str:
+        link = SKILL_LINK_RE.search(m.group(0))
+        if not link:
+            return m.group(0)  # panel without a skill link: leave untouched
+        name = link.group(1)
+        documented.add(name)
+        if name in skills:
+            return m.group(0)
+        removed.append(name)
+        return ""
+
+    inner = PANEL_RE.sub(drop_if_missing, inner)
+
+    added = sorted(n for n in skills if n not in documented and n not in ignored)
+    if added:
+        if not inner.endswith("\n"):
+            inner += "\n"
+        inner += "".join(render_panel(n, skills[n]) for n in added)
+
+    new_doc = doc[: block.start()] + opening + inner + closing + doc[block.end():]
+    return new_doc, added, sorted(removed)
+
+
+def pr_body(added, removed, skills) -> str:
+    lines = [
+        "Automated sync of `kotlin-ai-skills.md` with "
+        "[Kotlin/kotlin-agent-skills](https://github.com/Kotlin/kotlin-agent-skills/tree/main/skills).",
+        "",
+    ]
+    if added:
+        lines += ["### Added panels", ""]
+        lines += [f"- [`{n}`]({SKILL_URL}{n})" for n in added]
+        lines += [
+            "",
+            "> Titles and descriptions are generated from each `SKILL.md` (H1 heading and the first "
+            "sentence of the `description`). Please review and polish the wording, and add a "
+            "\"Learn more\" link if there is a related guide.",
+            "",
+        ]
+    if removed:
+        lines += ["### Removed panels", "", "These skill folders no longer exist:", ""]
+        lines += [f"- `{n}`" for n in removed]
+        lines += [""]
+    if not added and not removed:
+        lines += ["No changes."]
+    return "\n".join(lines) + "\n"
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--skills-dir", required=True, type=Path)
+    ap.add_argument("--doc", required=True, type=Path)
+    ap.add_argument("--ignore-file", type=Path,
+                    help="Optional file with skill folder names (one per line) that must not get a panel.")
+    ap.add_argument("--pr-body", type=Path, help="Where to write the PR description.")
+    args = ap.parse_args()
+
+    ignored = set()
+    if args.ignore_file and args.ignore_file.is_file():
+        ignored = {
+            l.strip() for l in args.ignore_file.read_text().splitlines()
+            if l.strip() and not l.lstrip().startswith("#")
+        }
+
+    skills = read_skills(args.skills_dir)
+    if not skills:
+        sys.exit(f"ERROR: no skills found in {args.skills_dir}; refusing to remove every panel.")
+
+    doc = args.doc.read_text(encoding="utf-8")
+    new_doc, added, removed = sync(doc, skills, ignored)
+    changed = new_doc != doc
+    if changed:
+        args.doc.write_text(new_doc, encoding="utf-8")
+
+    print(f"Added: {added or '-'}")
+    print(f"Removed: {removed or '-'}")
+
+    if args.pr_body:
+        args.pr_body.write_text(pr_body(added, removed, skills), encoding="utf-8")
+
+    if gh_out := os.environ.get("GITHUB_OUTPUT"):
+        with open(gh_out, "a") as f:
+            f.write(f"changed={'true' if changed else 'false'}\n")
+            f.write(f"added={' '.join(added)}\n")
+            f.write(f"removed={' '.join(removed)}\n")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,4 @@
-name: Sync Kotlin AI skills page
+name: Sync Kotlin AI skills page (fork test)
 
 on:
   # Fired instantly by Kotlin/kotlin-agent-skills when something under skills/ changes on main
@@ -51,6 +51,7 @@ jobs:
       - name: Open or update pull request
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           CHANGED: ${{ steps.sync.outputs.changed }}
           BRANCH: bot/sync-kotlin-ai-skills
           BASE: master
