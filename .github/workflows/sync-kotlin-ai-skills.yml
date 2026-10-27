@@ -41,7 +41,7 @@ jobs:
       - name: Update kotlin-ai-skills.md
         id: sync
         run: |
-          python .github/scripts/sync_kotlin_ai_skills.py \
+          python scripts/sync_kotlin_ai_skills.py \
             --skills-dir .kotlin-agent-skills/skills \
             --doc docs/topics/ai/kotlin-ai-skills.md \
             --pr-body "$RUNNER_TEMP/pr-body.md"
