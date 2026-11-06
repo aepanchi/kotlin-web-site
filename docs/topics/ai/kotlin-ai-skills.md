@@ -72,11 +72,6 @@ help you with.
         <a href="https://github.com/Kotlin/kotlin-agent-skills/tree/main/skills/kotlin-tooling-gradle-to-kotlin-toolchain-project" as="button" icon="arrow-right" icon-position="right" id="kotlin-tooling-gradle-to-kotlin-toolchain-project">AI skill</a>
     </panel>
     <panel>
-        <title>Convert a Gradle plugin to a Kotlin Toolchain plugin</title>
-        <p>Reimplement an existing Gradle plugin as a local Kotlin Toolchain plugin.</p>
-        <a href="https://github.com/Kotlin/kotlin-agent-skills/tree/main/skills/kotlin-tooling-gradle-to-kotlin-toolchain-plugin" as="button" icon="arrow-right" icon-position="right" id="kotlin-tooling-gradle-to-kotlin-toolchain-plugin">AI skill</a>
-    </panel>
-    <panel>
         <title>Build projects with Kotlin Toolchain</title>
         <p>Create, configure, build, test, and package Kotlin and Java projects using Kotlin Toolchain.</p>
         <a href="https://github.com/Kotlin/kotlin-agent-skills/tree/main/skills/kotlin-tooling-kotlin-toolchain" as="button" icon="arrow-right" icon-position="right" id="kotlin-tooling-kotlin-toolchain">AI skill</a>
@@ -85,6 +80,11 @@ help you with.
         <title>Create a Kotlin Toolchain plugin</title>
         <p>Create a local plugin for custom build tasks, code generation, verification, or packaging.</p>
         <a href="https://github.com/Kotlin/kotlin-agent-skills/tree/main/skills/kotlin-tooling-kotlin-toolchain-plugin-authoring" as="button" icon="arrow-right" icon-position="right" id="kotlin-tooling-kotlin-toolchain-plugin-authoring">AI skill</a>
+    </panel>
+    <panel>
+        <title>JPA test</title>
+        <p>Model Kotlin persistence code correctly for Spring Data JPA and Hibernate.</p>
+        <a href="https://github.com/Kotlin/kotlin-agent-skills/tree/main/skills/kotlin-backend-test" as="button" icon="arrow-right" icon-position="right" id="kotlin-backend-test">AI skill</a>
     </panel>
 </panels>
 
